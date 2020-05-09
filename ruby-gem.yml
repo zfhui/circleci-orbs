@@ -1,0 +1,114 @@
+version: 2.1
+
+description: An Orb to test and build a Ruby gem
+
+executors:
+  default:
+    description: The official CircleCI Ruby Docker Image.
+    parameters:
+      tag:
+        default: latest
+        description: The `circleci/ruby` Docker Image version tag.
+        type: string
+    docker:
+      - image: circleci/ruby:<< parameters.tag >>
+
+commands:
+  setup-and-test:
+    description: Installs Bundler, use it to install all dependencies and run RSpec tests.
+    parameters:
+      gemspec:
+        description: Name of your gemspec file.
+        type: string
+      bundler-version:
+        description: Your prefered bundler version.
+        type: string
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - gem-cache-{{ checksum "<< parameters.gemspec >>" }}
+            - gem-cache-
+      - run:
+          name: Installs Bunlder with a given version
+          command: gem install bundler -v << parameters.bundler-version >>
+      - run:
+          name: bundle install
+          command: bundle install --jobs=4 --retry=3 --path=vendor/bundle
+      - save_cache:
+          name: save gem dependencies to cache
+          key: gem-cache-{{ checksum "<< parameters.gemspec >>" }}
+          paths:
+            - vendor/bundle
+      - run:
+          name: run rspec tests
+          command: bundle exec rspec --format progress spec
+  build:
+    description: Builds your gem.
+    parameters:
+      gem-name:
+        description: Name of your gem.
+        type: string
+    steps:
+      - checkout
+      - run:
+          name: Builds your gem
+          command: gem build << parameters.gem-name >>.gemspec
+  release:
+    description: Releases your gem to RubyGems.org
+    parameters:
+      gem-name:
+        description: Name of your gem.
+        type: string
+      gem-credentials-env-name:
+        description: Name of your ENV for your RubyGems' API key.
+        type: string
+    steps:
+      - checkout
+      - run:
+          name: Setup credentials
+          command: |
+            mkdir ~/.gem
+            echo -e "---\r\n:rubygems_api_key: << parameters.gem-credentials-env-name >>" > ~/.gem/credentials
+            chmod 0600 /home/circleci/.gem/credentials
+      - run:
+          name: Release the gem to RubyGems.org
+          command: |
+            GEM_NAME=$(find . -name '<< parameters.gem-name >>-*.gem')
+            echo -e "\n Releasing $GEM_NAME to RubyGems.org ..."
+            gem push $GEM_NAME --key rubygems_api_key
+
+
+examples:
+  test-with-multiple-ruby-versions:
+    description: Runs RSpec tests against multiple Ruby versions
+    usage:
+      version: 2.1
+      orbs:
+        gem: zfhui/ruby-gem@0.0.1.0
+
+      jobs:
+        test-with-ruby-latest:
+          working_directory: ~/repo
+          executor:
+            name: gem/default
+            tag: latest
+          steps:
+            - gem/setup-and-test:
+                gemspec: silent_ping.gemspec
+                bundler-version: 2.0.1
+        test-with-ruby-2-3-6:
+          working_directory: ~/repo
+          executor:
+            name: gem/default
+            tag: 2.3.6
+          steps:
+            - gem/setup-and-test:
+                gemspec: silent_ping.gemspec
+                bundler-version: 1.16.1
+
+      workflows:
+        test:
+          jobs:
+            - test-with-ruby-latest
+            - test-with-ruby-2-3-6
