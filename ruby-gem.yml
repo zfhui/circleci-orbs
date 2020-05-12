@@ -106,9 +106,26 @@ examples:
             - gem/setup-and-test:
                 gemspec: silent_ping.gemspec
                 bundler-version: 1.16.1
+        build-and-release:
+          working_directory: ~/repo
+          executor: gem/default
+          steps:
+            - gem/build:
+                gem-name: silent_ping
+            - gem/release:
+                gem-name: silent_ping
+                gem-credentials-env-name: $RUBYGEMS_API_KEY
 
-      workflows:
-        test:
-          jobs:
-            - test-with-ruby-latest
-            - test-with-ruby-2-3-6
+workflows:
+  test-build-and-deploy:
+    jobs:
+      - test-with-ruby-latest
+      - test-with-ruby-2-3-6
+      - build-and-release:
+          requires:
+          - test-with-ruby-latest
+          - test-with-ruby-2-3-6
+          filters:
+            branches:
+              only:
+                - master

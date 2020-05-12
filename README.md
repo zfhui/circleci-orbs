@@ -11,7 +11,7 @@
 
 To *dev*:
 
-* `circleci orb publish ruby-gem.yml zfhui/ruby-gem@dev:first`
+* `circleci orb publish ruby-gem.yml zfhui/ruby-gem@dev:0.0.1`
 
 To *public*:
 
