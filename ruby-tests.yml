@@ -1,0 +1,99 @@
+version: 2.1
+
+description: An Orb that installs your Ruby Gems and runs Rubocop and RSpec (only MySQL support for now)
+
+executors:
+  default:
+    description: The official CircleCI Ruby Docker Image.
+    parameters:
+      tag:
+        default: latest
+        description: The `circleci/ruby` Docker Image version tag.
+        type: string
+      test_db_name:
+        description: Name for the testing DB
+        type: string
+    docker:
+      - image: circleci/ruby:<< parameters.tag >>
+        environment:
+          CIRCLE_CI: true
+          RAILS_ENV: test
+          MYSQL_URL: "mysql2://root:mysql@127.0.0.1/<< parameters.test_db_name >>"
+          REDIS_URL: "redis://127.0.0.1"
+      - image: circleci/mysql:5.6
+        environment:
+          MYSQL_DATABASE: << parameters.test_db_name >>
+          MYSQL_ROOT_PASSWORD: mysql
+      - image: redis
+
+commands:
+  setup-and-run-tests:
+    description: Installs Bundler, use it to install all dependencies and run RSpec tests.
+    parameters:
+      bundler-version:
+        description: Your prefered bundler version.
+        type: string
+    steps:
+      - checkout
+      - run:
+          name: Fetch git submodules
+          command: git submodule update --init
+      - restore_cache:
+          keys:
+            - gem-cache-{{ checksum "Gemfile.lock" }}
+            - gem-cache-
+      - run:
+          name: Installs Bunlder with a given version
+          command: gem install bundler -v << parameters.bundler-version >>
+      - run:
+          name: bundle install
+          command: |
+            bundle config set path "vendor/bundle" && bundle config set clean "true"
+            bundle check || bundle install --jobs=4 --retry=3
+      - save_cache:
+          name: save gem dependencies to cache
+          key: gem-cache-{{ checksum "Gemfile.lock" }}
+          paths:
+            - vendor/bundle
+      - run:
+          name: Rubocop
+          command: bundle exec rubocop
+      - run:
+          name: Wait for DB
+          command: dockerize -wait tcp://localhost:3306 -timeout 1m
+      - run:
+          name: Migrate DB
+          command: bundle exec rails db:migrate
+      - run:
+          name: run RSpec tests
+          command: |
+            bundle exec rspec --profule 10 \
+                              --format RspecJunitFormatter \
+                              --out test_results/rspec.xml \
+                              $(circleci tests glob "spec/**/*_spec.rb" | circleci tests split --split-by=timings)
+      - store_test_results:
+          path: test_results
+
+examples:
+  setup-ruby-and-run-tests:
+    description: Runs Rubocop and RSpec for this Ruby project
+    usage:
+      version: 2.1
+      orbs:
+        ruby-tests: zfhui/ruby-tests@0.0.1
+
+      jobs:
+        run-tests:
+          working_directory: ~/app
+          executor:
+            name: gem/default
+            tag: 2.6.3
+            test_db_name: myproject_test
+          steps:
+            - ruby-tests/setup-and-run-test:
+                bundler-version: 2.0.1
+
+      workflows:
+        test:
+          jobs:
+            - run-tests
