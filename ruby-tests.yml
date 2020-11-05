@@ -14,13 +14,13 @@ executors:
         description: Name for the testing DB
         type: string
     docker:
-      - image: circleci/ruby:<< parameters.tag >>
+      - image: circleci/ruby:<< parameters.tag >>-node
         environment:
           CIRCLE_CI: true
           RAILS_ENV: test
           MYSQL_URL: "mysql2://root:mysql@127.0.0.1/<< parameters.test_db_name >>"
           REDIS_URL: "redis://127.0.0.1"
-      - image: circleci/mysql:5.6
+      - image: circleci/mysql:5.7
         environment:
           MYSQL_DATABASE: << parameters.test_db_name >>
           MYSQL_ROOT_PASSWORD: mysql
@@ -67,7 +67,7 @@ commands:
       - run:
           name: run RSpec tests
           command: |
-            bundle exec rspec --profule 10 \
+            bundle exec rspec --profile 10 \
                               --format RspecJunitFormatter \
                               --out test_results/rspec.xml \
                               $(circleci tests glob "spec/**/*_spec.rb" | circleci tests split --split-by=timings)
@@ -80,17 +80,17 @@ examples:
     usage:
       version: 2.1
       orbs:
-        ruby-tests: zfhui/ruby-tests@0.0.1
+        tests: zfhui/ruby-tests@0.0.1
 
       jobs:
         run-tests:
           working_directory: ~/app
           executor:
-            name: gem/default
+            name: tests/default
             tag: 2.6.3
             test_db_name: myproject_test
           steps:
-            - ruby-tests/setup-and-run-test:
+            - tests/setup-and-run-test:
                 bundler-version: 2.0.1
 
       workflows:
